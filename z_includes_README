@@ -1,0 +1,13 @@
+The three z.....h files are not part of the cowloop package as such,
+but have been copied from other (GPL'ed) sources.
+
+They are needed by the utility-program 'cowpack'. This 'cowpack' also
+requires the 'libz.so' library that contains routines implementing the
+gzip compression algorithms.
+
+E.g. if you do have a library-file    /usr/lib/libz.so.1    then you may
+replace '-lz' in the Makefile by that filename explicitly written in full.
+
+The z....h files are *not* needed by any other part of this cowloop package.
+The 'cowpack' routine is a non-essential service component of the cowloop package.
+See our man-page cowpack.1 for more information on this 'cowpack' utility.

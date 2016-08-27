@@ -1,0 +1,47 @@
+The current distribution assumes that the cowloop driver is
+stored in your system in a separate directory, and you'll need
+commands such as "modprobe" or "insmod" to get it started.
+
+If you would like to install cowloop in the kernel source tree
+(top-directory: /usr/src/linux) then proceed as follows:
+
+- Go to /usr/src
+
+- Copy cowloop.[ch] to linux/drivers/block/
+  (this is where all 2.6 kernel block drivers are located)
+  If you don't have a subdir 'linux' then use the command
+  uname -r   to see which kernel version you have.
+
+- Install patch: patch -p0 < kerneltree.patch
+  Credits: Jeremy Huntwork
+
+        An explanation of what this patch does:
+        1) In the file  linux/drivers/block/Makefile
+           an entry is added to the long list of drivers-to-be-included:
+                obj-$(CONFIG_COWLOOP)          += cowloop.o
+           A side effect of this line is that the symbolic name
+           COWLOOP is connected to the cowloop-driver.
+        2) In the file  linux/drivers/block/Kconfig
+           an entry is added that says:
+                config COWLOOP
+                    tristate "Copy-on-write Loop Driver"
+                    <blank line here>
+           If you look in this file, you'll see that its purpose is
+           to support the interactive configuration session by
+           supplying comments and help-information.
+
+- Go to /usr/src/linux/
+  Again: if you don't have the subdir named 'linux' then find the
+  proper subdirectory name with command  uname -r
+
+- Configure cowloop via standard configuration: make ... config
+
+Please note that this is *only* for the driver source cowloop.[ch]
+All cowloop-utilities and their corresponding manpages and documentation
+still need to be made/installed separately. The creation of the special
+files in the /dev directory is also to be done separately.
+In other words: with respect to the Makefile of this distribution,
+this kernel patch replaces the 'make module', but not the 'make utils'.
+And it replaces the 'make install-module', but not 'make install-utils',
+'make install-man', 'make install-doc' and 'make install-dev'.
+

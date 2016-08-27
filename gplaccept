@@ -1,0 +1,23 @@
+GPLACCEPT=.gpl_license_accepted
+if [ -f $GPLACCEPT ]
+then
+	exit 0		# already accepted
+fi
+
+while :
+do
+  echo    'This software is licensed under the GNU PUBLIC LICENSE version 2.'
+  echo -n 'Do you accept the conditions described by this license? (Y/N): '
+  read ANSWER
+
+  case $ANSWER in
+    Y|y)	> $GPLACCEPT
+	exit 0
+	;;
+
+    N|n)	echo 'The package can not be installed.'
+	exit 1
+	;;
+  esac
+  echo
+done

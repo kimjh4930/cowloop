@@ -1,0 +1,144 @@
+#!/bin/bash
+#
+# This script is part of the cowloop-distribution.
+# It is executed as a step in the 'make install' operation
+# (in the sub-step "install-dev"). It creates the necessary
+# special files in the /dev directory. These /dev special
+# files must exist before you start using the cowloop-driver.
+#
+# This script is also useful if your system deletes the /dev
+# files during a reboot. It does no harm to run it even if
+# the special files in /dev already exist. But if you have
+# modified the values of MAXCOWS and COWMAJOR in the source
+# then you must clean up the old situation by hand first,
+# e.g. by commanding:  rm -rf /dev/cowloop /dev/cow/
+#
+# This script may be run with two optional arguments but these are
+# only needed under very special circumstances; please study the
+# script if you want to know more (look for $1 and $2).
+# In the ordinary case: run this (as root) without arguments.
+#
+# AT Computing, Nijmegen, The Netherlands
+# Current maintainer: Hendrik-Jan Thomassen <hjt@ATComputing.nl>
+# Cowloop 3.1 (February 2009)
+
+# First pick some default values:
+COWMAJOR=241    # major device number; overruled by $1
+MAXCOWS=256     # maximum number of cow devices
+DFLCOWS=16	# default number of minor devices (must be <= MAXCOWS)
+COWDIR=/dev/cow # base directory for all cow devices; chrooted by $2
+
+# Now, if the actual source code is at hand, overrule the defaults for
+# MAXCOWS and COWMAJOR with numbers from the actual generating source:
+HFILE=./cowloop.h
+if [ -f ${HFILE} ]; then
+    if grep '^#define[ 	]*MAXCOWS' ${HFILE} > /dev/null
+    then
+	# warning: next few lines contain hard tab characters
+	MAXCOWS=$(grep '^#define[  ]*MAXCOWS' ${HFILE} |
+		sed -e 's/^#define[ 	]*MAXCOWS[ 	]*//' \
+		    -e 's/[ 	].*$//')
+    fi
+    if grep '^#define[ 	]*COWMAJOR' ${HFILE} > /dev/null
+    then
+	# warning: next few lines contain hard tab characters
+	COWMAJOR=$(grep '^#define[  ]*COWMAJOR' ${HFILE} |
+		sed -e 's/^#define[ 	]*COWMAJOR[ 	]*//' \
+		    -e 's/[ 	].*$//')
+    fi
+fi
+# Minor number of the control channel device is always the
+# highest minor number in the range:
+let COWCTL="$MAXCOWS-1"
+
+#
+# Check if a major number has been specified as the
+# first argument. It's optional; default is COWMAJOR
+# or what is found in the source .h file (if present):
+#
+if [ $# -ge 1 ]
+then
+	COWMAJOR=$1
+fi
+
+#
+# Optional second argument gives a target root.
+# This name will be prepended before /dev/cow/....
+# to provide a /dev-directory lower than usual.
+#
+DESTDIR="$2"
+
+#
+# Verify that the given major number is numeric
+#
+if expr "$COWMAJOR" + 0 >/dev/null 2>/dev/null
+then
+	:
+else
+	echo $0: $1 is not numeric
+	exit 1
+fi
+
+#
+# Create directory /dev/cow for all cow devices
+#
+if [ -d ${DESTDIR}$COWDIR ]
+then
+	rm -rf ${DESTDIR}$COWDIR
+fi
+
+if mkdir -p ${DESTDIR}$COWDIR
+then
+	:
+else
+	echo $0: can not create directory ${DESTDIR}$COWDIR
+	exit 2
+fi
+
+#
+# Create device-special nodes below /dev/cow for cowloop driver
+#
+let COWMINOR=0
+
+while [ $COWMINOR -lt $DFLCOWS ]
+do
+	if mknod ${DESTDIR}$COWDIR/$COWMINOR b $COWMAJOR $COWMINOR
+ 	then
+		chmod o= ${DESTDIR}$COWDIR/$COWMINOR
+ 	else
+		echo $0: can not make node ${DESTDIR}$COWDIR/$COWMINOR
+ 		exit 3
+ 	fi
+
+	let COWMINOR+=1
+done
+
+# Old device name /dev/cowloop (alternative to /dev/cow/0)
+# supported for reasons of backward compatibility. Create it.
+# See man-page cowdev(1) for more information.
+if [ -e $DESTDIR/dev/cowloop ]
+then
+	rm -f $DESTDIR/dev/cowloop
+fi
+ 
+if ln -s $COWDIR/0 $DESTDIR/dev/cowloop
+then
+	:
+else
+	echo $0: can not create symlink $DESTDIR/dev/cowloop
+	exit 4
+fi
+ 
+#
+# Create /dev/cow/ctl for the control channel mechanism
+# See man-page cowdev(4) for more information.
+#
+if mknod ${DESTDIR}$COWDIR/ctl b $COWMAJOR $COWCTL 
+then
+	chmod o= ${DESTDIR}$COWDIR/ctl
+else
+	echo $0: can not make node ${DESTDIR}$COWDIR/ctl
+	exit 3
+fi
+
+exit 0
