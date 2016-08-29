@@ -237,10 +237,10 @@ char revision[] = "$Revision: 3.1 $"; /* cowlo_init_module() has
 #endif
 
 #include <linux/types.h>
-#include <linux/autoconf.h>
-#ifndef AUTOCONF_INCLUDED 
-#include <linux/config.h>
-#endif 
+#include <generated/autoconf.h>
+//#ifndef AUTOCONF_INCLUDED 
+//#include <linux/config.h>
+//#endif 
 #include <linux/module.h>
 #include <linux/version.h>
 #include <linux/moduleparam.h>
@@ -967,12 +967,16 @@ cowlo_request(request_queue_t *q)
 
 	DEBUGP(DCOW "cowloop - request function called....\n");
 
-	while((req = elv_next_request(q)) != NULL) {
+	//while((req = elv_next_request(q)) != NULL) {
+	while((req = blk_fetch_request(q)) != NULL) {
 		DEBUGP(DCOW "cowloop - got next request\n");
 
-		if (! blk_fs_request(req)) {
+		//if (! blk_fs_request(req)) {
+		if (req == NULL) {
                		 /* this is not a normal file system request */
-                	end_request(req, 0);
+                	//end_request(req, 0);
+			printk(KERN_ALERT"[end_request] 1\n");
+                	__blk_end_request_cur(req, 0);
                 	continue;
         	}
 		cowdev = req->rq_disk->private_data;
@@ -988,7 +992,9 @@ cowlo_request(request_queue_t *q)
 		*/
 		if (!cowdev->pid) {
 			printk(KERN_ERR"cowloop - no thread available\n");
-			end_request(req, 0);	/* request failed */
+			//end_request(req, 0);	/* request failed */
+			printk(KERN_ALERT"[end_request] 2\n");
+			__blk_end_request_all(req, 0);	/* request failed */
 			cowdev->iobusy	= 0;
 			continue;
 		}
@@ -1058,7 +1064,9 @@ cowlo_daemon(struct cowloop_device *cowdev)
 		*/
 		spin_lock_irq(&cowdev->rqlock);
 	
-		end_request(cowdev->req, rv);
+		//end_request(cowdev->req, rv);
+		printk(KERN_ALERT"[end_request] 3\n");
+		__blk_end_request_cur(cowdev->req, 0);	/* request failed */
 		cowdev->iobusy = 0;
 
 		/*
@@ -1084,14 +1092,20 @@ cowlo_do_request(struct request *req)
 {
 	unsigned long		len;
 	long int		rv;
-	loff_t 			offset;
 	struct cowloop_device	*cowdev = req->rq_disk->private_data;
+	loff_t 			offset;
 
 	/*
 	** calculate some variables which are needed later on
 	*/
-	len     =          req->current_nr_sectors << 9;
-	offset  = (loff_t) req->sector             << 9;
+	//len     =          req->current_nr_sectors << 9;
+	//offset  = (loff_t) req->sector             << 9;
+
+	len	=		blk_rq_cur_sectors(req) << 9;
+	offset	= (loff_t) 	blk_rq_pos(req) << 9;
+
+	printk(KERN_ALERT"[do_request] blk_rq_cur_sectors(req) : %llu\n", blk_rq_cur_sectors(req));
+	printk(KERN_ALERT"[do_request] blk_rq_pos(req) : %llu\n", blk_rq_pos(req));
 
 	DEBUGP(DCOW"cowloop - req cmd=%d offset=%lld len=%lu addr=%p\n",
 				*(req->cmd), offset, len, req->buffer);
@@ -1102,6 +1116,7 @@ cowlo_do_request(struct request *req)
 	switch (rq_data_dir(req)) {
 	   /**********************************************************/
 	   case READ:
+	   	printk(KERN_ALERT"[do_request] READ : %lu\n", READ);
 		switch ( cowlo_checkio(cowdev, len, offset) ) {
 		   case ALLCOW:
 			rv = cowlo_readcow(cowdev, req->buffer, len, offset);
@@ -1122,6 +1137,7 @@ cowlo_do_request(struct request *req)
 
 	   /**********************************************************/
 	   case WRITE:
+	   	printk(KERN_ALERT"[do_request] WRITE : %lu\n", WRITE);
 		switch ( cowlo_checkio(cowdev, len, offset) ) {
 		   case ALLCOW:
 			/*
@@ -1550,7 +1566,8 @@ cowlo_writecow(struct cowloop_device *cowdev, void *buf, int len, loff_t offset)
 		struct kstatfs		ks;
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,18))
-		if (vfs_statfs(cowdev->cowfp->f_dentry, &ks)==0){
+		//if (vfs_statfs(cowdev->cowfp->f_dentry, &ks)==0){
+		if (vfs_statfs(&cowdev->cowfp->f_path, &ks)==0){
 #else
 		if (vfs_statfs(cowdev->cowfp->f_dentry->d_inode->i_sb, &ks)==0){
 #endif
@@ -1861,7 +1878,8 @@ cowlo_openpair(char *rdof, char *cowf, int autorecover, int minor)
 	** administer total and available size of filesystem holding cowfile
 	*/
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,18))
-		if (vfs_statfs(cowdev->cowfp->f_dentry, &ks)==0){
+		//if (vfs_statfs(cowdev->cowfp->f_dentry, &ks)==0){
+		if (vfs_statfs(&cowdev->cowfp->f_path, &ks)==0){
 #else
 		if (vfs_statfs(cowdev->cowfp->f_dentry->d_inode->i_sb, &ks)==0){
 #endif
@@ -1918,7 +1936,8 @@ cowlo_openpair(char *rdof, char *cowf, int autorecover, int minor)
 		return -EINVAL;
 	}
 
-	blk_queue_hardsect_size(cowdev->rqueue, cowdev->blocksz);
+	//blk_queue_hardsect_size(cowdev->rqueue, cowdev->blocksz);
+	blk_queue_logical_block_size (cowdev->rqueue, cowdev->blocksz);
 	cowdev->gd->queue = cowdev->rqueue;
 
 	/*
@@ -2132,7 +2151,8 @@ cowlo_openrdo(struct cowloop_device *cowdev, char *rdof)
 
 
 		if (cowdev->belowq)
-			cowdev->blocksz = cowdev->belowq->hardsect_size;
+			cowdev->blocksz = cowdev->belowq->limits.logical_block_size;
+			//cowdev->blocksz = cowdev->belowq->hardsect_size;
 
 		if (cowdev->blocksz == 0)
 			cowdev->blocksz = BLOCK_SIZE; /* default 2^10 */
